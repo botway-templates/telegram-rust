@@ -1,32 +1,50 @@
-use futures::StreamExt;
-use telegram_bot::*;
+use teloxide::{prelude::*, utils::command::BotCommands};
+use std::error::Error;
 use botway_rs::get;
 
 #[tokio::main]
-async fn main() -> Result<(), Error> {
-	let api = Api::new(get("token"));
+async fn main() {
+    pretty_env_logger::init();
+    log::info!("Starting command bot...");
 
-	// Fetch new updates via long poll method
-	let mut stream = api.stream();
+    let bot = Bot::new(get("token"));
 
-	while let Some(update) = stream.next().await {
-		// If the received update contains a new message...
-		let update = update?;
+    teloxide::commands_repl(bot, answer, Command::ty()).await;
+}
 
-		if let UpdateKind::Message(message) = update.kind {
-			if let MessageKind::Text { ref data, .. } = message.kind {
-				// Print received text message to stdout.
-				println!("<{}>: {}", &message.from.first_name, data);
+#[derive(BotCommands, Clone)]
+#[command(rename = "lowercase", description = "These commands are supported:")]
+enum Command {
+    #[command(description = "display this text.")]
+    Help,
+    #[command(description = "handle a username.")]
+    Username(String),
+    #[command(description = "handle a username and an age.", parse_with = "split")]
+    UsernameAndAge { username: String, age: u8 },
+}
 
-				// Answer message with "Hi".
-				api.send(message.text_reply(format!(
-					"Hi, {}! You just wrote '{}'",
-					&message.from.first_name, data
-				)))
-				.await?;
-			}
-		}
-	}
+async fn answer(
+    bot: AutoSend<Bot>,
+    message: Message,
+    command: Command,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
+    match command {
+        Command::Help => {
+            bot.send_message(message.chat.id, Command::descriptions().to_string()).await?
+        }
 
-	Ok(())
+        Command::Username(username) => {
+            bot.send_message(message.chat.id, format!("Your username is @{username}.")).await?
+        }
+
+        Command::UsernameAndAge { username, age } => {
+            bot.send_message(
+                message.chat.id,
+                format!("Your username is @{username} and age is {age}."),
+            )
+            .await?
+        }
+    };
+
+    Ok(())
 }
